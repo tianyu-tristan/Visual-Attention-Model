@@ -18,5 +18,7 @@ Google Street View House Number images (SVHN), available from here: http://ufldl
 # Reference
 
 [1] Multiple Object Recognition with Visual Attention, Jimmy Ba, Volodymyr Mnih, Koray Kavukcuoglu, https://arxiv.org/abs/1412.7755
+
 [2] Recurrent Models of Visual Attention, Volodymyr Mnih, Nicolas Heess, Alex Graves, Koray Kavukcuoglu, https://arxiv.org/abs/1406.6247
+
 [3] Reading Digits in Natural Images with Unsupervised Feature Learning , Yuval Netzer, Tao Wang, Adam Coates, Alessandro Bissacco, Bo Wu, Andrew Y. Ng on NIPS Workshop on Deep Learning and Unsupervised Feature Learning 2011. http://ufldl.stanford.edu/housenumbers/nips2011_housenumbers.pdf

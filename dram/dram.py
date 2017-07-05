@@ -14,12 +14,60 @@ rnn_cell = tf.nn.rnn_cell
 seq2seq = tf.contrib.legacy_seq2seq
 distributions = tf.contrib.distributions
 
+import os
+import sys
+import tarfile
+import pickle
+
+def truncate_labels(labels):
+    """replace the second 10 by -1 row wise
+    """
+    def do_one_row(row):
+        erase = False
+        for i, _ in enumerate(row):
+            if erase:
+                row[i] = -1
+            else:
+                if row[i] == 10:
+                    erase = True
+        return row
+
+    ret = np.copy(labels)
+    ret[:, 0] = 10 # overwrite length to be stop seq
+    ret = np.roll(ret, -1, axis=1) # move first to last
+    return np.apply_along_axis(do_one_row, axis=1, arr=ret)
+
+print('Loading pickled data...')
+
+pickle_file = 'SVHN.pickle'
+
+with open(pickle_file, 'rb') as f:
+    save = pickle.load(f)
+    X_train = save['train_dataset']
+    Y_train = save['train_labels']
+    Y_train = truncate_labels(Y_train)
+    X_val = save['valid_dataset']
+    Y_val = save['valid_labels']
+    Y_val = truncate_labels(Y_val)
+    X_test = save['test_dataset']
+    Y_test = save['test_labels']
+    Y_test = truncate_labels(Y_test)
+    del save  
+    print('Training data shape:', X_train.shape)
+    print('Training label shape:',Y_train.shape)
+    print('Validation data shape:', X_val.shape)
+    print('Validation label shape:', Y_val.shape)
+    print('Test data shape:', X_test.shape)
+    print('Test label shape:', Y_test.shape)
+
+print('Data successfully loaded!')
+
 # Load config & data
 
 config = Config()
 
-X_train = np.random.randn(config.batch_size, config.original_size, config.original_size, config.num_channels)
-Y_train = np.random.randint(0, 2, (config.batch_size, config.max_num_digits+1, config.num_classes))
+#X_train = np.random.randn(config.batch_size, config.original_size, config.original_size, config.num_channels)
+#Y_train = np.random.randint(0, 2, (config.batch_size, config.max_num_digits+1, config.num_classes))
 
 # placeholders
 X_ph = tf.placeholder(dtype=tf.float32,

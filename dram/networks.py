@@ -6,7 +6,7 @@ import numpy as np
 import tensorflow as tf
 from keras.models import Sequential
 from keras.layers import Conv2D, Flatten, Dense, Multiply
-from recurrentshop import RecurrentSequential
+# from recurrentshop import RecurrentSequential
 
 # from utils import weight_variable, bias_variable
 

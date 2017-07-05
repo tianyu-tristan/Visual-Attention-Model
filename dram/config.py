@@ -4,7 +4,7 @@ class Config(object):
     batch_size = 16 ##
     eval_batch_size = 50
     loc_std = 0.03 ##
-    original_size = 54 ##
+    original_size = 32 ##
     num_channels = 1
 
     # glimpse
@@ -16,7 +16,7 @@ class Config(object):
     minRadius = 8
     hg_size = hl_size = 128
     g_size = 256
-    loc_dim = 2
+    loc_dim = 2 ##
     cell_size = 512 ##
     num_glimpses = 3 ##
     max_num_digits = 5 ##

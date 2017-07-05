@@ -75,7 +75,7 @@ X_ph = tf.placeholder(dtype=tf.float32,
                       name="X")
 # want y = [1,5,8,10,-1,-1], where 0-9 is classes, 10 is stop sign, -1 is padding
 Y_ph = tf.placeholder(dtype=tf.float32,
-                      shape=[None, config.max_num_digits+1, config.num_classes],
+                      shape=[None, config.max_num_digits+1],
                       name="Y")
 
 curriculum_ph = tf.placeholder(dtype=tf.float32,
@@ -274,7 +274,13 @@ for t in range(timesteps):
 
 
 # Eq(15) MLE objective function
-Y_true_expand = tf.stack([Y_ph] * config.num_glimpses, axis=2) # Y_expand = (batch_sz, max_digits+1, num_glimpse, num_classes)
+Y_true_onehot = tf.stack([Y_ph] * config.num_glimpses, axis=2) # (batch_sz, max_digits+1, num_glimpse)
+Y_true_onehot = tf.one_hot(indices=Y_true_onehot,
+                           depth=11, on_value=1.,
+                           off_value=0.,
+                           axis=3,
+                           dtype=tf.float32) # (batch_sz, max_digits+1, num_glimpse, num_classes)
+                                             # Y_true_onehot will have row of all 0s if the target label is -1 (padding)
 
 probs = tf.stack(probs) # (timesteps=18, batch_size, num_classes)
 probs = tf.reshape(probs, [config.max_num_digits+1, config.num_glimpses, config.batch_size, config.num_classes])
@@ -287,7 +293,7 @@ Y_true = tf.argmax(Y_ph, axis=2) # (batch_size, max_digits+1)
 
 scores = tf.cast(tf.equal(Y_pred, Y_true), dtype=tf.int32) # (batch_size, max_digits+1), where -1 padding is converted to 0
 
-p_ys = tf.multiply(probs, Y_true_expand)
+p_ys = tf.multiply(probs, Y_true_onehot) # mask out incorrect label probability, then reduce sum to get the correct prob
 p_ys = tf.reduce_sum(p_ys, axis=3) # p_ys = [batch_sz, max_digits+1, num_glimpse)
 
 p_ls = likelihood(loc_mean_arr, sampled_loc_arr, config.loc_std) # [batch_sz, timesteps]

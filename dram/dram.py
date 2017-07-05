@@ -62,6 +62,11 @@ with open(pickle_file, 'rb') as f:
 
 print('Data successfully loaded!')
 
+# TO BE REMOVED
+
+X_train = X_train[:128]
+Y_train = Y_train[:128]
+
 # Load config & data
 
 config = Config()
@@ -74,7 +79,7 @@ X_ph = tf.placeholder(dtype=tf.float32,
                       shape=[None, config.original_size, config.original_size, config.num_channels],
                       name="X")
 # want y = [1,5,8,10,-1,-1], where 0-9 is classes, 10 is stop sign, -1 is padding
-Y_ph = tf.placeholder(dtype=tf.float32,
+Y_ph = tf.placeholder(dtype=tf.int64,
                       shape=[None, config.max_num_digits+1],
                       name="Y")
 
@@ -163,7 +168,7 @@ def build_curriculum(scores):
                     row[i] = 1
                     failed_once = True
         return row
-    tmp = scores.clone()
+    tmp = np.copy(scores)
     curriculum_mask = np.apply_along_axis(do_one_row, axis=1, arr=tmp)
     return curriculum_mask
 
@@ -184,7 +189,7 @@ def build_rewards(scores):
                     failed_once = True
         return row
 
-    tmp = scores.clone()
+    tmp = np.copy(scores)
     rewards_mask = np.apply_along_axis(do_one_row, axis=1, arr=tmp)
     return rewards_mask
 
@@ -289,9 +294,9 @@ probs = tf.transpose(probs, perm=[2,0,1,3]) # probs = (batch_size, max_digits+1=
 # Eq(14)
 Y_pred = tf.reduce_mean(tf.log(probs), axis=2) # (batch_size, max_digits+1, num_classes)
 Y_pred = tf.argmax(Y_pred, axis=2) # (batch_size, max_digits+1)
-Y_true = tf.argmax(Y_ph, axis=2) # (batch_size, max_digits+1)
+Y_true = Y_ph # (batch_size, max_digits+1)
 
-scores = tf.cast(tf.equal(Y_pred, Y_true), dtype=tf.int32) # (batch_size, max_digits+1), where -1 padding is converted to 0
+scores = tf.cast(tf.equal(Y_pred, Y_true), dtype=tf.int64) # (batch_size, max_digits+1), where -1 padding is converted to 0
 
 p_ys = tf.multiply(probs, Y_true_onehot) # mask out incorrect label probability, then reduce sum to get the correct prob
 p_ys = tf.reduce_sum(p_ys, axis=3) # p_ys = [batch_sz, max_digits+1, num_glimpse)
@@ -362,7 +367,7 @@ with tf.Session() as sess:
         images, labels = X_train, Y_train
         # duplicate M times, see Eqn (9)
         images = np.tile(images, [config.M, 1, 1, 1])
-        labels = np.tile(labels, [config.M, 1, 1])
+        labels = np.tile(labels, [config.M, 1])
         Enet.samping = True
 
         scores_val = sess.run(

@@ -1,7 +1,7 @@
 class Config(object):
 
     # training
-    batch_size = 16 ##
+    batch_size = 128 ##
     eval_batch_size = 50
     loc_std = 0.03 ##
     original_size = 32 ##

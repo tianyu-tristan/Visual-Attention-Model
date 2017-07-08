@@ -13,14 +13,14 @@ from config import Config
 rnn_cell = tf.nn.rnn_cell
 seq2seq = tf.contrib.legacy_seq2seq
 distributions = tf.contrib.distributions
+logging.basicConfig(filename='dram.log',level=logging.DEBUG)
 
-import os
-import sys
-import tarfile
 import pickle
 
 def truncate_labels(labels):
-    """replace the second 10 by -1 row wise
+    """
+    (1) replacing row[0] by 10, and move it to the last of row
+    (2) replace the second 10 by -1 row wise
     """
     def do_one_row(row):
         erase = False
@@ -33,8 +33,37 @@ def truncate_labels(labels):
         return row
 
     ret = np.copy(labels)
-    ret[:, 0] = 10 # overwrite length to be stop seq
-    ret = np.roll(ret, -1, axis=1) # move first to last
+    ret = repair_labels(ret)
+    return np.apply_along_axis(do_one_row, axis=1, arr=ret)
+
+def repair_labels(labels):
+    """
+    replacing row[0] by 10, and move it to the last of row
+    :param labels:
+    :return:
+    """
+    ret = np.copy(labels)
+    ret[:, 0] = 10  # overwrite length to be stop seq
+    ret = np.roll(ret, -1, axis=1)  # move first to last
+    return ret
+
+def mask_labels(labels):
+    """
+    (1) replacing row[0] by 10, and move it to the last of row
+    (2) replace the second 10 by -1 row wise
+    """
+    def do_one_row(row):
+        erase = False
+        for i, _ in enumerate(row):
+            if erase:
+                row[i] = 0
+            else:
+                if row[i] == 10:
+                    erase = True
+                row[i] = 1
+        return row
+
+    ret = np.copy(labels)
     return np.apply_along_axis(do_one_row, axis=1, arr=ret)
 
 print('Loading pickled data...')
@@ -45,13 +74,16 @@ with open(pickle_file, 'rb') as f:
     save = pickle.load(f)
     X_train = save['train_dataset']
     Y_train = save['train_labels']
-    Y_train = truncate_labels(Y_train)
+    Y_train = repair_labels(Y_train)
+    Y_train_mask = mask_labels(Y_train)
     X_val = save['valid_dataset']
     Y_val = save['valid_labels']
-    Y_val = truncate_labels(Y_val)
+    Y_val = repair_labels(Y_val)
+    Y_val_mask = mask_labels(Y_val)
     X_test = save['test_dataset']
     Y_test = save['test_labels']
-    Y_test = truncate_labels(Y_test)
+    Y_test = repair_labels(Y_test)
+    Y_test_mask = mask_labels(Y_test)
     del save  
     print('Training data shape:', X_train.shape)
     print('Training label shape:',Y_train.shape)
@@ -82,6 +114,10 @@ X_ph = tf.placeholder(dtype=tf.float32,
 Y_ph = tf.placeholder(dtype=tf.int64,
                       shape=[None, config.max_num_digits+1],
                       name="Y")
+
+Y_mask_ph = tf.placeholder(dtype=tf.int64,
+                           shape=[None, config.max_num_digits+1],
+                           name="Y_mask")
 
 curriculum_ph = tf.placeholder(dtype=tf.float32,
                                shape=[None, config.max_num_digits+1],
@@ -266,6 +302,8 @@ for t in range(timesteps):
     outputs.append(r1_outputs)
 
     baseline_t = Bnet(r2_outputs) # (batch_size, 1)
+    # logging.debug("baseline_t = {}".format(sess.run(baseline_t)))
+    # logging.debug("Bnet.w = {}".format(Bnet.w))
     baselines.append(baseline_t)
         # # save the current glimpse and the hidden state
         # inputs[t] = glimpse
@@ -331,8 +369,8 @@ rewards_avg = tf.reduce_mean(tf.reduce_mean(rewards, axis=1), axis=0)
 
 baselines_mse = tf.reduce_mean(tf.square((rewards - baselines)))
 var_list = tf.trainable_variables()
-print(var_list)
-print("len = ", len(var_list))
+logging.info(var_list)
+logging.info("len = {}".format(len(var_list)))
 
 # hybrid loss
 loss = -logllratio -J + baselines_mse  # `-` for minimize
@@ -381,9 +419,11 @@ with tf.Session() as sess:
         curriculum_mask_val = build_curriculum(scores_val)
         rewards_mask_val = build_rewards(scores_val)
 
+        Y_pred_val, Y_true_onehot_val, probs_val, p_ys_val, p_ls_val, log_inner_sum_val, log_inner_sum_masked_val, \
         baselines_val, baselines_mse_val, MLE_val, logllratio_val, \
                 rewards_val, rewards_avg_val, loss_val, lr_val, _ = sess.run(
-                        [baselines, baselines_mse, -J, logllratio,
+                        [Y_pred, Y_true_onehot, probs, p_ys, p_ls, log_inner_sum, log_inner_sum_masked,
+                         baselines, baselines_mse, -J, logllratio,
                          rewards, rewards_avg, loss, learning_rate, train_op],
                         feed_dict={
                             X_ph: images,
@@ -392,7 +432,10 @@ with tf.Session() as sess:
                             rewards_ph: rewards_mask_val
                         })
 
-        if i and i % 1 == 0:
+        if i and i % 10 == 0:
+        # if True:
+            logging.debug('set {}: probs = {}, Y_true_onehot = {}'.format(i, probs_val, Y_true_onehot_val))
+            logging.debug('set {}: p_ys = {}, p_ls = {}, log_inner_sum = {}, log_inner_sum_masked = {}, curriculum_mask = {}, rewards_mask = {}'.format(i, p_ys_val, p_ls_val, log_inner_sum_val, log_inner_sum_masked_val, curriculum_mask_val, rewards_mask_val))
             logging.info('step {}: lr = {:3.6f}'.format(i, lr_val))
             logging.info(
                     'step {}: rewards_avg = {:3.4f}\tloss = {:3.4f}\txent = {:3.4f}'.format(
@@ -402,7 +445,12 @@ with tf.Session() as sess:
             # logging.info('log_w = {}'.format(loc_w_val))
 
         # if i and i % training_steps_per_epoch == 0:
-        #     # Evaluation
+        if True:
+            # Evaluation
+            y_mask = mask_labels(labels)
+            result = np.equal(Y_pred_val * y_mask, labels * y_mask)
+            logging.info("step {}: test accuracy = {}".format(i, np.mean(np.min(result, axis=1))))
+            logging.debug("step {}: Y = {}, Y_pred = {}".format(i, labels, Y_pred_val))
         #     for dataset in [mnist.validation, mnist.test]:
         #         steps_per_epoch = dataset.num_examples // config.eval_batch_size
         #         correct_cnt = 0

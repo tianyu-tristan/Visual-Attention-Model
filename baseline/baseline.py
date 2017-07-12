@@ -19,7 +19,8 @@ K.set_session(sess)
 
 batch_size = 128
 num_classes = 10
-epochs = 200
+epochs = 100
+run_name = '100epochs'
 
 # input image dimensions
 img_rows, img_cols = 100, 100
@@ -73,11 +74,23 @@ model.compile(loss=keras.losses.categorical_crossentropy,
               optimizer=keras.optimizers.Adadelta(),
               metrics=['accuracy'])
 
+tbCallBack = keras.callbacks.TensorBoard(log_dir='./logs/'+run_name, histogram_freq=0, write_graph=True, write_images=True)
+
 model.fit(x_train, y_train,
           batch_size=batch_size,
           epochs=epochs,
           verbose=1,
-          validation_data=(x_va, y_va))
+          validation_data=(x_va, y_va),
+          callbacks=[tbCallBack]
+         )
 score = model.evaluate(x_test, y_test, verbose=0)
 print('Test loss:', score[0])
 print('Test accuracy:', score[1])
+
+# serialize model to JSON
+model_json = model.to_json()
+with open("model-{}.json".format(run_name), "w") as json_file:
+    json_file.write(model_json)
+# serialize weights to HDF5
+model.save_weights("model-{}.h5".format(run_name))
+print("Saved model to disk")

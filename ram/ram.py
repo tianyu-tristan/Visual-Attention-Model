@@ -13,6 +13,8 @@ from glimpse import GlimpseNet, LocNet
 from utils import weight_variable, bias_variable, loglikelihood
 from config import Config
 
+from tensorflow.examples.tutorials.mnist import input_data
+
 try:
   xrange
 except NameError:
@@ -23,7 +25,9 @@ logging.getLogger().setLevel(logging.INFO)
 rnn_cell = tf.nn.rnn_cell
 seq2seq = tf.contrib.legacy_seq2seq
 
-# mnist = input_data.read_data_sets('MNIST_data', one_hot=False)
+config = Config()
+
+#mnist = input_data.read_data_sets('MNIST_data', one_hot=False)
 data = np.load('../data/mnist_digit_sample_8dsistortions9x9.npz')
 
 # the data, shuffled and split between train and test sets
@@ -33,24 +37,30 @@ data = np.load('../data/mnist_digit_sample_8dsistortions9x9.npz')
 # y_va = to_categorical(np.reshape(data['y_valid'], (-1)))
 # x_test = np.expand_dims(data['X_test'], axis=-1)
 # y_test = to_categorical(np.reshape(data['y_test'], (-1)))
+
 x_train = np.reshape(data['X_train'], (-1, 10000))
 y_train = np.reshape(data['y_train'], (-1))
-x_va = np.reshape(data['X_valid'], (-1, 10000))
-y_va = np.reshape(data['y_valid'], (-1))
-x_test = np.reshape(data['X_test'], (-1, 10000))
-y_test = np.reshape(data['y_test'], (-1))
+#x_va = np.reshape(data['X_valid'], (-1, 10000))
+#y_va = np.reshape(data['y_valid'], (-1))
+#x_test = np.reshape(data['X_test'], (-1, 10000))
+#y_test = np.reshape(data['y_test'], (-1))
 
+#x_train, y_train = mnist.train.next_batch(config.batch_size)
 
-x_train = x_train.astype('float32')
-x_va = x_va.astype('float32')
-x_test = x_test.astype('float32')
+x_train = x_train.astype('float32')[:32]
+x_va = x_train
+y_va = y_train
+x_test = x_train
+y_test = y_train
+#x_va = x_va.astype('float32')[:128]
+#x_test = x_test.astype('float32')[:128]
 
 print('x_train shape:', x_train.shape)
 print(x_train.shape[0], 'train samples')
 print(x_va.shape[0], 'validation samples')
 print(x_test.shape[0], 'test samples')
 
-config = Config()
+# config = Config()
 
 input_shape = (config.original_size, config.original_size, 1)
 
@@ -154,7 +164,7 @@ with tf.Session() as sess:
   for i in xrange(n_steps):
     steps_per_epoch = x_train.shape[0] // config.batch_size
     num_samples = steps_per_epoch * config.batch_size
-    for step in range(steps_per_epoch -1):
+    for step in range(steps_per_epoch):
       start = step * config.batch_size
       end = (step+1) * config.batch_size
       images, labels = x_train[start:end], y_train[start:end]
@@ -162,31 +172,35 @@ with tf.Session() as sess:
       images = np.tile(images, [config.M, 1])
       labels = np.tile(labels, [config.M])
       loc_net.samping = True
-      adv_val, baselines_mse_val, xent_val, logllratio_val, \
+      adv_val, baselines_val, rewards_val, baselines_mse_val, xent_val, logllratio_val, \
           reward_val, loss_val, lr_val, _ = sess.run(
-              [advs, baselines_mse, xent, logllratio,
+              [advs, baselines, rewards, baselines_mse, xent, logllratio,
                reward, loss, learning_rate, train_op],
               feed_dict={
                   images_ph: images,
                   labels_ph: labels
               })
-    if i and i % 100 == 0:
-      logging.info('step {}: lr = {:3.6f}'.format(i, lr_val))
-      logging.info(
-          'step {}: reward = {:3.4f}\tloss = {:3.4f}\txent = {:3.4f}'.format(
-              i, reward_val, loss_val, xent_val))
-      logging.info('llratio = {:3.4f}\tbaselines_mse = {:3.4f}'.format(
-          logllratio_val, baselines_mse_val))
+      # if i and i % 100 == 0:
+      if True:
+        logging.info('step {}: epoch_mini_step: {}/{}'.format(i, step, steps_per_epoch-1))
+        logging.info('step {}: lr = {:3.6f}'.format(i, lr_val))
+        logging.info(
+            'step {}: reward = {:3.4f}\tloss = {:3.4f}\txent = {:3.4f}'.format(
+                i, reward_val, loss_val, xent_val))
+        logging.info('llratio = {:3.4f}\tbaselines_mse = {:3.4f}'.format(
+            logllratio_val, baselines_mse_val))
+        logging.info('baselines = {}\trewards = {}'.format(baselines_val, rewards_val))
 
-    if i and i % training_steps_per_epoch == 0:
+    # if i and i % training_steps_per_epoch == 0:
+    if True:
       # Evaluation
-      for dataset in [(x_va, y_va), (x_test, y_test)]:
+      for dataset in [(x_va, y_va,'va'), (x_test, y_test,'test')]:
         steps_per_epoch = dataset[0].shape[0] // config.eval_batch_size
         correct_cnt = 0
         num_samples = steps_per_epoch * config.eval_batch_size
         loc_net.sampling = True
-        for test_step in xrange(steps_per_epoch-1):
-          images, labels = dataset[0][test_step * config.batch_size : (test_step+1) * config.batch_size]
+        for test_step in xrange(steps_per_epoch):
+          images, labels = dataset[0][test_step * config.eval_batch_size : (test_step+1) * config.eval_batch_size], dataset[1][test_step * config.eval_batch_size : (test_step+1) * config.eval_batch_size]
           labels_bak = labels
           # Duplicate M times
           images = np.tile(images, [config.M, 1])
@@ -203,7 +217,7 @@ with tf.Session() as sess:
           pred_labels_val = pred_labels_val.flatten()
           correct_cnt += np.sum(pred_labels_val == labels_bak)
         acc = correct_cnt / num_samples
-        if dataset[0] == x_va:
+        if dataset[2] == 'va':
           logging.info('valid accuracy = {}'.format(acc))
         else:
           logging.info('test accuracy = {}'.format(acc))

@@ -5,9 +5,9 @@ class Config(object):
   eval_batch_size = 32 ##
   loc_std = 0.22
   original_size = 100 ##
-  num_channels = 1
-  depth = 1
-  sensor_size = win_size**2 * depth
+  num_channels = 1 # do not change, not tested
+  num_scales = 3
+  sensor_size = win_size**2 * num_channels * num_scales
   minRadius = 8
   hg_size = hl_size = 128
   g_size = 256

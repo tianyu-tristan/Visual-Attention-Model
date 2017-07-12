@@ -20,7 +20,7 @@ class GlimpseNet(object):
     self.sensor_size = config.sensor_size
     self.win_size = config.win_size
     self.minRadius = config.minRadius
-    self.depth = config.depth
+    self.num_scales = config.num_scales
 
     self.hg_size = config.hg_size
     self.hl_size = config.hl_size
@@ -43,20 +43,32 @@ class GlimpseNet(object):
     self.b_l1 = weight_variable((self.g_size,))
 
   def get_glimpse(self, loc):
-    """Take glimpse on the original images."""
+    """Take glimpse on the original images.
+
+    :param loc: 2D tuple locations, values between [-1.0, 1.0]
+    :return: glimpse vector
+    """
     imgs = tf.reshape(self.images_ph, [
         tf.shape(self.images_ph)[0], self.original_size, self.original_size,
         self.num_channels
     ])
-    glimpse_imgs = tf.image.extract_glimpse(imgs,
-                                            [self.win_size, self.win_size], loc)
-    glimpse_imgs = tf.reshape(glimpse_imgs, [
-        tf.shape(loc)[0], self.win_size * self.win_size * self.num_channels
-    ])
-    return glimpse_imgs
+
+    glimpse_all_scales = []
+    for scale in range(1, self.num_scales + 1):
+      glimpse_imgs = tf.image.extract_glimpse(imgs,
+                                              [self.win_size * scale, self.win_size * scale], loc) # BHWC
+
+      glimpse_imgs = tf.image.resize_bilinear(glimpse_imgs, (self.win_size, self.win_size)) # BHWC
+      glimpse_imgs = tf.reshape(glimpse_imgs, [
+          tf.shape(loc)[0], self.win_size * self.win_size * self.num_channels
+      ]) #(B, H * W * C)
+
+      glimpse_all_scales.append(glimpse_imgs)
+
+    return tf.stack(glimpse_all_scales, axis=1) # (B, H * W * C * S)
 
   def __call__(self, loc):
-    glimpse_input = self.get_glimpse(loc)
+    glimpse_input = self.get_glimpse(loc) # (B, H * W * C * S)
     glimpse_input = tf.reshape(glimpse_input,
                                (tf.shape(loc)[0], self.sensor_size))
     g = tf.nn.relu(tf.nn.xw_plus_b(glimpse_input, self.w_g0, self.b_g0))

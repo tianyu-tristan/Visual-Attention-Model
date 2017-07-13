@@ -134,7 +134,7 @@ accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 avg_softmax = tf.reshape(softmax, [config.M, -1, config.num_classes])
 avg_softmax = tf.reduce_mean(avg_softmax, axis=0) # (B, num_classes)
 avg_y_pred = tf.argmax(avg_softmax, axis=1) #(B, )
-avg_acc = tf.reduce_mean(tf.cast(tf.equal(avg_y_pred, labels_expanded), tf.float32))
+avg_acc = tf.reduce_mean(tf.cast(tf.equal(avg_y_pred, labels_ph), tf.float32))
 
 # cross-entropy.
 xent = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels_expanded)
@@ -215,7 +215,7 @@ with tf.Session() as sess:
       # if batch and batch % 100 == 0:
       if True:
         logging.info('epoch {}: epoch_mini_step: {}/{}'.format(epoch, batch, num_batches - 1))
-        logging.info('epoch {}: avg_accuracy: {:3.4f}'.format(avg_acc_val))
+        logging.info('epoch {}: avg_accuracy: {}'.format(epoch, avg_acc_val))
         logging.info('epoch {}: lr = {:3.6f}'.format(epoch, lr_val))
         logging.info(
             'epoch {}: reward = {:3.4f}\tloss = {:3.4f}\txent = {:3.4f}'.format(

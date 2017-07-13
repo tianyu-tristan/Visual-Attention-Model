@@ -72,6 +72,14 @@ for i in range(NUM_DISTORTIONS_DB):
 print ("Created distortions")
 
 
+def plot_one_image(image, label=None, folder=None, shp=[28,28]):
+    img_out = np.reshape(image, shp)
+    img_out = (255 * img_out).astype(np.uint8)
+    img_out = Image.fromarray(img_out)
+    if folder is not None and label is not None:
+        img_out.save(os.path.join(folder, label + ".png"))
+    return img_out
+
 def plot_n_by_n_images(images,epoch=None,folder=None, n = 10, shp=[28,28]):
     """ Plot 100 MNIST images in a 10 by 10 table. Note that we crop
     the images so that they appear reasonably close together. The
@@ -173,7 +181,7 @@ samples = [create_sample(sample_digits(
     mnist_data['y_train'],
     ORG_SHP)[0], OUT_SHP).reshape(-1) for i in range(400)]
 samples_arr = np.vstack(samples)
-plot_n_by_n_images(samples_arr,epoch="0",folder="", n=20, shp=OUT_SHP)
+plot_n_by_n_images(samples_arr,epoch="400",folder="", n=20, shp=OUT_SHP)
 
 
 X_train, y_train = create_dataset(N_TRAIN, mnist_data['X_train'],
@@ -194,3 +202,8 @@ np.savez_compressed(
     X_test=X_test,
     y_test=y_test)
 ## create train, valid, and test sets
+
+if NUM_DIGITS == 1:
+    for label in range(10):
+        x = X_valid[np.reshape(y_valid, -1) == label][0]
+        plot_one_image(x, str(label), "", OUT_SHP)

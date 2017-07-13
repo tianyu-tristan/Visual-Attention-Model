@@ -64,7 +64,7 @@ print(x_test.shape[0], 'test samples')
 
 input_shape = (config.original_size, config.original_size, 1)
 
-n_steps = config.step
+num_epochs = config.step
 
 loc_mean_arr = []
 sampled_loc_arr = []
@@ -83,14 +83,20 @@ images_ph = tf.placeholder(tf.float32,
                             config.num_channels])
 labels_ph = tf.placeholder(tf.int64, [None])
 
+# Monte Carlo sampling, duplicate M times, see Eqn (2)
+images_expanded = tf.tile(images_ph, [config.M, 1])
+labels_expanded = tf.tile(labels_ph, [config.M])
+
 # Build the aux nets.
 with tf.variable_scope('glimpse_net'):
-  gl = GlimpseNet(config, images_ph)
+  # gl = GlimpseNet(config, images_ph)
+  gl = GlimpseNet(config, images_expanded)
 with tf.variable_scope('loc_net'):
   loc_net = LocNet(config)
 
 # number of examples
-N = tf.shape(images_ph)[0]
+# N = tf.shape(images_ph)[0]
+N = tf.shape(images_expanded)[0]
 init_loc = tf.random_uniform((N, 2), minval=-1, maxval=1)
 init_glimpse = gl(init_loc)
 # Core network.
@@ -121,13 +127,22 @@ with tf.variable_scope('cls'):
   b_logit = bias_variable((config.num_classes,))
 logits = tf.nn.xw_plus_b(output, w_logit, b_logit)
 softmax = tf.nn.softmax(logits)
+correct_prediction = tf.equal(tf.argmax(softmax,1), labels_expanded)
+accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+
+# average statistics after Monte Carlo sampling "M"
+avg_softmax = tf.reshape(softmax, [config.M, -1, config.num_classes])
+avg_softmax = tf.reduce_mean(avg_softmax, axis=0) # (B, num_classes)
+avg_y_pred = tf.argmax(avg_softmax, axis=1) #(B, )
+avg_acc = tf.reduce_mean(tf.cast(tf.equal(avg_y_pred, labels_expanded), tf.float32))
 
 # cross-entropy.
-xent = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels_ph)
+xent = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels_expanded)
 xent = tf.reduce_mean(xent)
-pred_labels = tf.argmax(logits, 1)
+
 # 0/1 reward.
-reward = tf.cast(tf.equal(pred_labels, labels_ph), tf.float32)
+y_pred = tf.argmax(logits, 1)
+reward = tf.cast(tf.equal(y_pred, labels_expanded), tf.float32)
 rewards = tf.expand_dims(reward, 1)  # [batch_sz, 1]
 rewards = tf.tile(rewards, (1, config.num_glimpses))  # [batch_sz, timesteps]
 logll = loglikelihood(loc_mean_arr, sampled_loc_arr, config.loc_std)
@@ -137,6 +152,7 @@ reward = tf.reduce_mean(reward)
 
 baselines_mse = tf.reduce_mean(tf.square((rewards - baselines)))
 var_list = tf.trainable_variables()
+
 # hybrid loss
 loss = -logllratio + xent + baselines_mse  # `-` for minimize
 grads = tf.gradients(loss, var_list)
@@ -158,66 +174,78 @@ learning_rate = tf.maximum(learning_rate, config.lr_min)
 opt = tf.train.AdamOptimizer(learning_rate)
 train_op = opt.apply_gradients(zip(grads, var_list), global_step=global_step)
 
+# tensorboard logging
+tf.summary.scalar("loss", loss)
+tf.summary.scalar("reward", reward)
+tf.summary.scalar("xent", xent)
+tf.summary.scalar("baselines_mse", baselines_mse)
+tf.summary.scalar("logllratio", logllratio)
+tf.summary.scalar("accuracy", accuracy)
+summary_op = tf.summary.merge_all()
+
+saver = tf.train.Saver()
+
 with tf.Session() as sess:
   sess.run(tf.initialize_all_variables())
+  writer = tf.summary.FileWriter(logdir="./logs/"+config.run_name, graph=tf.get_default_graph())
 
-  for i in xrange(n_steps):
-    steps_per_epoch = x_train.shape[0] // config.batch_size
-    num_samples = steps_per_epoch * config.batch_size
-    for step in range(steps_per_epoch):
-      start = step * config.batch_size
-      end = (step+1) * config.batch_size
+  for epoch in xrange(num_epochs):
+    num_batches = x_train.shape[0] // config.batch_size
+    num_samples = num_batches * config.batch_size
+    avg_loss = 0.
+
+    for batch in range(num_batches):
+      start = batch * config.batch_size
+      end = (batch + 1) * config.batch_size
       images, labels = x_train[start:end], y_train[start:end]
-      # duplicate M times, see Eqn (2)
-      images = np.tile(images, [config.M, 1])
-      labels = np.tile(labels, [config.M])
+
       loc_net.samping = True
-      adv_val, baselines_val, rewards_val, baselines_mse_val, xent_val, logllratio_val, \
-          reward_val, loss_val, lr_val, _ = sess.run(
-              [advs, baselines, rewards, baselines_mse, xent, logllratio,
-               reward, loss, learning_rate, train_op],
+      softmax_val, adv_val, baselines_val, rewards_val, baselines_mse_val, xent_val, logllratio_val, \
+          reward_val, loss_val, lr_val, _, summary_val = sess.run(
+              [softmax, advs, baselines, rewards, baselines_mse, xent, logllratio,
+               reward, loss, learning_rate, train_op, summary_op],
               feed_dict={
                   images_ph: images,
                   labels_ph: labels
               })
-      # if i and i % 100 == 0:
+      writer.add_summary(summary_val, num_epochs * num_batches + epoch)
+
+      avg_loss += loss_val / num_batches
+
+      # if batch and batch % 100 == 0:
       if True:
-        logging.info('step {}: epoch_mini_step: {}/{}'.format(i, step, steps_per_epoch-1))
-        logging.info('step {}: lr = {:3.6f}'.format(i, lr_val))
+        logging.info('step {}: epoch_mini_step: {}/{}'.format(epoch, batch, num_batches - 1))
+        logging.info('step {}: lr = {:3.6f}'.format(epoch, lr_val))
         logging.info(
             'step {}: reward = {:3.4f}\tloss = {:3.4f}\txent = {:3.4f}'.format(
-                i, reward_val, loss_val, xent_val))
+                epoch, reward_val, loss_val, xent_val))
         logging.info('llratio = {:3.4f}\tbaselines_mse = {:3.4f}'.format(
             logllratio_val, baselines_mse_val))
-        logging.info('baselines = {}\trewards = {}'.format(baselines_val, rewards_val))
+        logging.debug('baselines = {}\trewards = {}'.format(baselines_val, rewards_val))
 
-    # if i and i % training_steps_per_epoch == 0:
-    if True:
+    # if epoch and epoch % training_steps_per_epoch == 0:
+    if True: # print each epoch
       # Evaluation
       for dataset in [(x_va, y_va,'va'), (x_test, y_test,'test')]:
-        steps_per_epoch = dataset[0].shape[0] // config.eval_batch_size
+        num_batches = dataset[0].shape[0] // config.eval_batch_size
         correct_cnt = 0
-        num_samples = steps_per_epoch * config.eval_batch_size
+        num_samples = num_batches * config.eval_batch_size
         loc_net.sampling = True
-        for test_step in xrange(steps_per_epoch):
+        for test_step in xrange(num_batches):
           images, labels = dataset[0][test_step * config.eval_batch_size : (test_step+1) * config.eval_batch_size], dataset[1][test_step * config.eval_batch_size : (test_step+1) * config.eval_batch_size]
-          labels_bak = labels
-          # Duplicate M times
-          images = np.tile(images, [config.M, 1])
-          labels = np.tile(labels, [config.M])
-          softmax_val = sess.run(softmax,
+
+          avg_y_pred_val = sess.run(avg_y_pred,
                                  feed_dict={
                                      images_ph: images,
                                      labels_ph: labels
                                  })
-          softmax_val = np.reshape(softmax_val,
-                                   [config.M, -1, config.num_classes])
-          softmax_val = np.mean(softmax_val, 0)
-          pred_labels_val = np.argmax(softmax_val, 1)
-          pred_labels_val = pred_labels_val.flatten()
-          correct_cnt += np.sum(pred_labels_val == labels_bak)
+
+          correct_cnt += np.sum(avg_y_pred_val == labels)
         acc = correct_cnt / num_samples
         if dataset[2] == 'va':
           logging.info('valid accuracy = {}'.format(acc))
         else:
           logging.info('test accuracy = {}'.format(acc))
+
+  save_path = saver.save(sess, "model-{}.ckpt".format(config.run_name))
+  logging.info('Model saved in file: {}'.format(save_path))

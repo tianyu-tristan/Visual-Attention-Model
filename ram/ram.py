@@ -202,11 +202,11 @@ with tf.Session() as sess:
                   images_ph: images,
                   labels_ph: labels
               })
-      writer.add_summary(summary_val, num_epochs * num_batches + epoch)
+      writer.add_summary(summary_val, epoch * num_batches + batch)
 
       avg_loss += loss_val / num_batches
 
-      if batch and batch % 1000 == 0:
+      if batch and batch % 100 == 0:
       # if True:
         logging.info('epoch {}: batch: {}/{}'.format(epoch, batch, num_batches - 1))
         logging.info('epoch {}: avg_accuracy: {}'.format(epoch, avg_acc_val))
@@ -238,7 +238,7 @@ with tf.Session() as sess:
           correct_cnt += np.sum(avg_y_pred_val == labels)
         acc = correct_cnt / num_samples
 
-        logging.info('valid accuracy = {}'.format(acc))
+        logging.info('epoch {}: valid accuracy = {}'.format(epoch, acc))
 
   for dataset in [(x_test, y_test, 'test')]:
     num_batches = dataset[0].shape[0] // config.eval_batch_size

@@ -2,8 +2,8 @@ class Config(object):
 
   win_size = 12 ##
   bandwidth = win_size**2
-  batch_size = 32 ##
-  eval_batch_size = 32 ##
+  batch_size = 128 ##
+  eval_batch_size = 128 ##
   loc_std = 0.22
   original_size = 100 ##
   num_channels = 1 # do not change, not tested
@@ -20,7 +20,7 @@ class Config(object):
   num_classes = 10
   max_grad_norm = 5.
 
-  step = 10000 ##
+  step = 1000 ##
   lr_start = 1e-3
   lr_min = 1e-4
 

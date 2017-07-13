@@ -200,9 +200,9 @@ with tf.Session() as sess:
       images, labels = x_train[start:end], y_train[start:end]
 
       loc_net.samping = True
-      softmax_val, adv_val, baselines_val, rewards_val, baselines_mse_val, xent_val, logllratio_val, \
+      avg_acc_val, softmax_val, adv_val, baselines_val, rewards_val, baselines_mse_val, xent_val, logllratio_val, \
           reward_val, loss_val, lr_val, _, summary_val = sess.run(
-              [softmax, advs, baselines, rewards, baselines_mse, xent, logllratio,
+              [avg_acc, softmax, advs, baselines, rewards, baselines_mse, xent, logllratio,
                reward, loss, learning_rate, train_op, summary_op],
               feed_dict={
                   images_ph: images,
@@ -214,10 +214,11 @@ with tf.Session() as sess:
 
       # if batch and batch % 100 == 0:
       if True:
-        logging.info('step {}: epoch_mini_step: {}/{}'.format(epoch, batch, num_batches - 1))
-        logging.info('step {}: lr = {:3.6f}'.format(epoch, lr_val))
+        logging.info('epoch {}: epoch_mini_step: {}/{}'.format(epoch, batch, num_batches - 1))
+        logging.info('epoch {}: avg_accuracy: {:3.4f}'.format(avg_acc_val))
+        logging.info('epoch {}: lr = {:3.6f}'.format(epoch, lr_val))
         logging.info(
-            'step {}: reward = {:3.4f}\tloss = {:3.4f}\txent = {:3.4f}'.format(
+            'epoch {}: reward = {:3.4f}\tloss = {:3.4f}\txent = {:3.4f}'.format(
                 epoch, reward_val, loss_val, xent_val))
         logging.info('llratio = {:3.4f}\tbaselines_mse = {:3.4f}'.format(
             logllratio_val, baselines_mse_val))

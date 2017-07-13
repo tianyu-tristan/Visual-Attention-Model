@@ -20,40 +20,34 @@ try:
 except NameError:
   xrange=range
 
-logging.getLogger().setLevel(logging.INFO)
+config = Config()
+
+logging.basicConfig(filename='run-{}.log'.format(config.run_name),level=logging.DEBUG)
+logging.getLogger().setLevel(logging.DEBUG)
 
 rnn_cell = tf.nn.rnn_cell
 seq2seq = tf.contrib.legacy_seq2seq
 
-config = Config()
 
 #mnist = input_data.read_data_sets('MNIST_data', one_hot=False)
 data = np.load('../data/mnist_digit_sample_8dsistortions9x9.npz')
 
 # the data, shuffled and split between train and test sets
-# x_train = np.expand_dims(data['X_train'], axis=-1)
-# y_train = to_categorical(np.reshape(data['y_train'], (-1)))
-# x_va = np.expand_dims(data['X_valid'], axis=-1)
-# y_va = to_categorical(np.reshape(data['y_valid'], (-1)))
-# x_test = np.expand_dims(data['X_test'], axis=-1)
-# y_test = to_categorical(np.reshape(data['y_test'], (-1)))
 
 x_train = np.reshape(data['X_train'], (-1, 10000))
 y_train = np.reshape(data['y_train'], (-1))
-#x_va = np.reshape(data['X_valid'], (-1, 10000))
-#y_va = np.reshape(data['y_valid'], (-1))
-#x_test = np.reshape(data['X_test'], (-1, 10000))
-#y_test = np.reshape(data['y_test'], (-1))
+x_va = np.reshape(data['X_valid'], (-1, 10000))
+y_va = np.reshape(data['y_valid'], (-1))
+x_test = np.reshape(data['X_test'], (-1, 10000))
+y_test = np.reshape(data['y_test'], (-1))
 
 #x_train, y_train = mnist.train.next_batch(config.batch_size)
 
-x_train = x_train.astype('float32')[:32]
-x_va = x_train
-y_va = y_train
-x_test = x_train
-y_test = y_train
-#x_va = x_va.astype('float32')[:128]
-#x_test = x_test.astype('float32')[:128]
+# x_train = x_train.astype('float32')[:32]
+# x_va = x_train
+# y_va = y_train
+# x_test = x_train
+# y_test = y_train
 
 print('x_train shape:', x_train.shape)
 print(x_train.shape[0], 'train samples')
@@ -180,7 +174,7 @@ tf.summary.scalar("reward", reward)
 tf.summary.scalar("xent", xent)
 tf.summary.scalar("baselines_mse", baselines_mse)
 tf.summary.scalar("logllratio", logllratio)
-tf.summary.scalar("accuracy", accuracy)
+tf.summary.scalar("avg_accuracy", avg_acc)
 summary_op = tf.summary.merge_all()
 
 saver = tf.train.Saver()
@@ -212,9 +206,9 @@ with tf.Session() as sess:
 
       avg_loss += loss_val / num_batches
 
-      # if batch and batch % 100 == 0:
-      if True:
-        logging.info('epoch {}: epoch_mini_step: {}/{}'.format(epoch, batch, num_batches - 1))
+      if batch and batch % 1000 == 0:
+      # if True:
+        logging.info('epoch {}: batch: {}/{}'.format(epoch, batch, num_batches - 1))
         logging.info('epoch {}: avg_accuracy: {}'.format(epoch, avg_acc_val))
         logging.info('epoch {}: lr = {:3.6f}'.format(epoch, lr_val))
         logging.info(
@@ -227,7 +221,7 @@ with tf.Session() as sess:
     # if epoch and epoch % training_steps_per_epoch == 0:
     if True: # print each epoch
       # Evaluation
-      for dataset in [(x_va, y_va,'va'), (x_test, y_test,'test')]:
+      for dataset in [(x_va, y_va,'va')]:
         num_batches = dataset[0].shape[0] // config.eval_batch_size
         correct_cnt = 0
         num_samples = num_batches * config.eval_batch_size
@@ -243,10 +237,27 @@ with tf.Session() as sess:
 
           correct_cnt += np.sum(avg_y_pred_val == labels)
         acc = correct_cnt / num_samples
-        if dataset[2] == 'va':
-          logging.info('valid accuracy = {}'.format(acc))
-        else:
-          logging.info('test accuracy = {}'.format(acc))
+
+        logging.info('valid accuracy = {}'.format(acc))
+
+  for dataset in [(x_test, y_test, 'test')]:
+    num_batches = dataset[0].shape[0] // config.eval_batch_size
+    correct_cnt = 0
+    num_samples = num_batches * config.eval_batch_size
+    loc_net.sampling = True
+    for test_step in xrange(num_batches):
+      images, labels = dataset[0][test_step * config.eval_batch_size: (test_step + 1) * config.eval_batch_size], \
+                       dataset[1][test_step * config.eval_batch_size: (test_step + 1) * config.eval_batch_size]
+
+      avg_y_pred_val = sess.run(avg_y_pred,
+                                feed_dict={
+                                  images_ph: images,
+                                  labels_ph: labels
+                                })
+
+      correct_cnt += np.sum(avg_y_pred_val == labels)
+    acc = correct_cnt / num_samples
+    logging.info('test accuracy = {}'.format(acc))
 
   save_path = saver.save(sess, "model-{}.ckpt".format(config.run_name))
   logging.info('Model saved in file: {}'.format(save_path))

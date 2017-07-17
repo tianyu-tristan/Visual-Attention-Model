@@ -11,11 +11,20 @@ from config import Config
 
 
 rnn_cell = tf.nn.rnn_cell
-seq2seq = tf.contrib.legacy_seq2seq
+seq2seq = tf.contrib.seq2seq
 distributions = tf.contrib.distributions
 logging.basicConfig(filename='dram.log',level=logging.DEBUG)
 
 import pickle
+
+outputs = []
+baselines = []
+pred_labels = []
+probs = []
+
+loc_mean_arr = []
+sampled_loc_arr = []
+
 
 def truncate_labels(labels):
     """
@@ -76,25 +85,25 @@ with open(pickle_file, 'rb') as f:
     Y_train = save['train_labels']
     Y_train = repair_labels(Y_train)
     Y_train_mask = mask_labels(Y_train)
-    X_val = save['valid_dataset']
-    Y_val = save['valid_labels']
-    Y_val = repair_labels(Y_val)
-    Y_val_mask = mask_labels(Y_val)
-    X_test = save['test_dataset']
-    Y_test = save['test_labels']
-    Y_test = repair_labels(Y_test)
-    Y_test_mask = mask_labels(Y_test)
-    del save  
+    # X_val = save['valid_dataset']
+    # Y_val = save['valid_labels']
+    # Y_val = repair_labels(Y_val)
+    # Y_val_mask = mask_labels(Y_val)
+    # X_test = save['test_dataset']
+    # Y_test = save['test_labels']
+    # Y_test = repair_labels(Y_test)
+    # Y_test_mask = mask_labels(Y_test)
+    del save
     print('Training data shape:', X_train.shape)
     print('Training label shape:',Y_train.shape)
-    print('Validation data shape:', X_val.shape)
-    print('Validation label shape:', Y_val.shape)
-    print('Test data shape:', X_test.shape)
-    print('Test label shape:', Y_test.shape)
+    # print('Validation data shape:', X_val.shape)
+    # print('Validation label shape:', Y_val.shape)
+    # print('Test data shape:', X_test.shape)
+    # print('Test label shape:', Y_test.shape)
 
 print('Data successfully loaded!')
 
-# TO BE REMOVED
+# Overfitting 128 data, TO BE REMOVED
 
 X_train = X_train[:128]
 Y_train = Y_train[:128]
@@ -115,19 +124,14 @@ Y_ph = tf.placeholder(dtype=tf.int64,
                       shape=[None, config.max_num_digits+1],
                       name="Y")
 
-Y_mask_ph = tf.placeholder(dtype=tf.int64,
-                           shape=[None, config.max_num_digits+1],
-                           name="Y_mask")
+# curriculum_ph = tf.placeholder(dtype=tf.float32,
+#                                shape=[None, config.max_num_digits+1],
+#                                name="curriculum")
 
-curriculum_ph = tf.placeholder(dtype=tf.float32,
-                               shape=[None, config.max_num_digits+1],
-                               name="curriculum")
+# rewards_ph = tf.placeholder(dtype=tf.float32,
+#                             shape=[None, config.max_num_digits+1],
+#                             name="rewards")
 
-rewards_ph = tf.placeholder(dtype=tf.float32,
-                            shape=[None, config.max_num_digits+1],
-                            name="rewards")
-
-# with tf.variable_scope("DRAM", reuse=None):
 
 # Emission Net
 # with tf.variable_scope("EmissionNet", reuse=None):
@@ -259,7 +263,6 @@ def build_rewards(scores):
 
 
 # Start Recurrent Network
-# with tf.variable_scope("DRAM", reuse=None):
 # start context
 init_state = Cnet(X_ph)  # (batch_size, 512)
 
@@ -269,20 +272,12 @@ r2 = rnn_cell.LSTMCell(config.cell_size)
 r1_zero_state = r1.zero_state(config.batch_size, tf.float32)
 r1_zero_inputs = tf.zeros((config.batch_size, config.cell_size * config.scale), dtype=tf.float32)
 r2_zero_inputs = tf.zeros((config.batch_size, config.cell_size), dtype=tf.float32)
-r2_init_state = tf.nn.rnn_cell.LSTMStateTuple(init_state, init_state)  # init_state = (batch_size, cell_size)
+r2_init_state = tf.nn.rnn_cell.LSTMStateTuple(tf.zeros((config.batch_size, config.cell_size)), init_state)  # init_state = (batch_size, cell_size)
 
 with tf.variable_scope("r1", reuse=None):
     r1_outputs, r1_state = r1(inputs=r1_zero_inputs, state=r1_zero_state)
 with tf.variable_scope("r2", reuse=None):
     r2_outputs, r2_state = r2(inputs=r2_zero_inputs, state=r2_init_state)
-
-outputs = []
-baselines = []
-pred_labels = []
-probs = []
-
-loc_mean_arr = []
-sampled_loc_arr = []
 
 for t in range(timesteps):
 
@@ -305,15 +300,6 @@ for t in range(timesteps):
     # logging.debug("baseline_t = {}".format(sess.run(baseline_t)))
     # logging.debug("Bnet.w = {}".format(Bnet.w))
     baselines.append(baseline_t)
-        # # save the current glimpse and the hidden state
-        # inputs[t] = glimpse
-        # outputs[t] = hiddenState
-        # # get the next input glimpse
-        # if t != self.timesteps - 1:
-        #     glimpse = get_next_input(hiddenState)
-        # else:
-        #     baseline = tf.sigmoid(tf.matmul(hiddenState, Wb_h_b) + Bb_h_b)
-        #     baselines.append(baseline)
 
 
 # Eq(15) MLE objective function
@@ -331,29 +317,39 @@ probs = tf.transpose(probs, perm=[2,0,1,3]) # probs = (batch_size, max_digits+1=
 
 # Eq(14)
 Y_pred = tf.reduce_mean(tf.log(probs), axis=2) # (batch_size, max_digits+1, num_classes)
-Y_pred = tf.argmax(Y_pred, axis=2) # (batch_size, max_digits+1)
-Y_true = Y_ph # (batch_size, max_digits+1)
+# Y_pred = tf.argmax(Y_pred, axis=2) # (batch_size, max_digits+1)
+# Y_true = Y_ph # (batch_size, max_digits+1)
 
-scores = tf.cast(tf.equal(Y_pred, Y_true), dtype=tf.int64) # (batch_size, max_digits+1), where -1 padding is converted to 0
+# scores = tf.cast(tf.equal(Y_pred, Y_true), dtype=tf.int64) # (batch_size, max_digits+1), where -1 padding is converted to 0
 
-p_ys = tf.multiply(probs, Y_true_onehot) # mask out incorrect label probability, then reduce sum to get the correct prob
-p_ys = tf.reduce_sum(p_ys, axis=3) # p_ys = [batch_sz, max_digits+1, num_glimpse)
+# p_ys = tf.multiply(probs, Y_true_onehot) # mask out incorrect label probability, then reduce sum to get the correct prob
+# p_ys = tf.reduce_sum(p_ys, axis=3) # p_ys = [batch_sz, max_digits+1, num_glimpse)
+#
+# p_ls_tmp = likelihood(loc_mean_arr, sampled_loc_arr, config.loc_std) # [batch_sz, timesteps]
+# p_ls = tf.reshape(p_ls_tmp, [config.batch_size, config.max_num_digits+1, config.num_glimpses]) # p_ls = (batch_sz, max_digits+1, num_glimpse)
+#
+# inner_sum = tf.multiply(p_ys, p_ls) # (batch_sz, max_digits+1, num_glimpse)
+# inner_sum = tf.reduce_sum(inner_sum, axis=2) # (batch_sz, max_digits+1)
+# log_inner_sum = tf.log(inner_sum) # (batch_sz, max_digits+1)
+#
+# log_inner_sum_masked = tf.multiply(log_inner_sum, curriculum_ph)
+#
+# J = tf.reduce_sum(log_inner_sum_masked, axis=1) #(batch_sz,)
+# J = tf.reduce_mean(J) # MLE objective
 
-p_ls = likelihood(loc_mean_arr, sampled_loc_arr, config.loc_std) # [batch_sz, timesteps]
-p_ls = tf.reshape(p_ls, [config.batch_size, config.max_num_digits+1, config.num_glimpses]) # p_ls = (batch_sz, max_digits+1, num_glimpse)
-
-inner_sum = tf.multiply(p_ys, p_ls) # (batch_sz, max_digits+1, num_glimpse)
-inner_sum = tf.reduce_sum(inner_sum, axis=2) # (batch_sz, max_digits+1)
-log_inner_sum = tf.log(inner_sum) # (batch_sz, max_digits+1)
-
-log_inner_sum_masked = tf.multiply(log_inner_sum, curriculum_ph)
-
-J = tf.reduce_sum(log_inner_sum_masked, axis=1) #(batch_sz,)
-J = tf.reduce_mean(J) # MLE objective
+# sequence loss
+xent = seq2seq.sequence_loss(logits=Y_pred,
+                             targets=Y_ph,
+                             weights=tf.ones([config.batch_size,config.max_num_digits+1]),
+                             average_across_timesteps=True,
+                             average_across_batch=True
+                             )
+Y_pred_labels = tf.argmax(Y_pred, 2) #(batch_sz, max_digits+1)
 
 # 0/1 rewards.
 # Eq(11)
-rewards = tf.expand_dims(rewards_ph, axis=-1) # rewards_ph = (batch_sz, max_digits+1), rewards = (batch_sz, max_digits+1, 1)
+reward = tf.cast(tf.equal(Y_pred_labels, Y_ph), tf.float32)
+rewards = tf.expand_dims(reward, axis=-1) # rewards_ph = (batch_sz, max_digits+1), rewards = (batch_sz, max_digits+1, 1)
 rewards = tf.tile(rewards, (1, 1, config.num_glimpses))  # (batch_sz, max_digits+1, num_glimpse)
 rewards = tf.reshape(rewards, shape=[config.batch_size, timesteps]) # (batch_size, (max_digits+1)*num_glimpse=timestep)
 
@@ -373,7 +369,7 @@ logging.info(var_list)
 logging.info("len = {}".format(len(var_list)))
 
 # hybrid loss
-loss = -logllratio -J + baselines_mse  # `-` for minimize
+loss = -logllratio + xent + baselines_mse  # `-` for minimize
 grads = tf.gradients(loss, var_list)
 grads, _ = tf.clip_by_global_norm(grads, config.max_grad_norm)
 
@@ -408,49 +404,59 @@ with tf.Session() as sess:
         labels = np.tile(labels, [config.M, 1])
         Enet.samping = True
 
-        scores_val = sess.run(
-                [scores],
-                feed_dict={
-                    X_ph: images,
-                    Y_ph: labels
-                }
-        )
-        scores_val = np.squeeze(scores_val)
-        curriculum_mask_val = build_curriculum(scores_val)
-        rewards_mask_val = build_rewards(scores_val)
+        # scores_val = sess.run(
+        #         [scores],
+        #         feed_dict={
+        #             X_ph: images,
+        #             Y_ph: labels
+        #         }
+        # )
+        # scores_val = np.squeeze(scores_val)
+        # curriculum_mask_val = build_curriculum(scores_val)
+        # rewards_mask_val = build_rewards(scores_val)
 
-        Y_pred_val, Y_true_onehot_val, probs_val, p_ys_val, p_ls_val, log_inner_sum_val, log_inner_sum_masked_val, \
-        baselines_val, baselines_mse_val, MLE_val, logllratio_val, \
-                rewards_val, rewards_avg_val, loss_val, lr_val, _ = sess.run(
-                        [Y_pred, Y_true_onehot, probs, p_ys, p_ls, log_inner_sum, log_inner_sum_masked,
-                         baselines, baselines_mse, -J, logllratio,
-                         rewards, rewards_avg, loss, learning_rate, train_op],
-                        feed_dict={
-                            X_ph: images,
-                            Y_ph: labels,
-                            curriculum_ph: curriculum_mask_val,
-                            rewards_ph: rewards_mask_val
-                        })
+        xent_val, rewards_val, baselines_val, loss_val, Y_pred_labels_val, _ = sess.run([xent, rewards, baselines, loss, Y_pred_labels, train_op],
+                                                                     feed_dict={
+                                                                         X_ph: images,
+                                                                         Y_ph: labels
+                                                                     })
+        #
+        # xent_val, logll_val, loc_mean_arr_val, sampled_loc_arr_val, p_ls_tmp_val, \
+        # Y_pred_val, Y_true_onehot_val, probs_val, p_ys_val, p_ls_val, log_inner_sum_val, log_inner_sum_masked_val, \
+        # baselines_val, baselines_mse_val, MLE_val, logllratio_val, \
+        #         rewards_val, rewards_avg_val, loss_val, lr_val, _ = sess.run(
+        #                 [xent, logll, loc_mean_arr, sampled_loc_arr, p_ls_tmp, Y_pred, Y_true_onehot, probs, p_ys, p_ls, log_inner_sum, log_inner_sum_masked,
+        #                  baselines, baselines_mse, -J, logllratio,
+        #                  rewards, rewards_avg, loss, learning_rate, train_op],
+        #                 feed_dict={
+        #                     X_ph: images,
+        #                     Y_ph: labels,
+        #                     curriculum_ph: curriculum_mask_val,
+        #                     rewards_ph: rewards_mask_val
+        #                 })
 
-        if i and i % 10 == 0:
-        # if True:
-            logging.debug('set {}: probs = {}, Y_true_onehot = {}'.format(i, probs_val, Y_true_onehot_val))
-            logging.debug('set {}: p_ys = {}, p_ls = {}, log_inner_sum = {}, log_inner_sum_masked = {}, curriculum_mask = {}, rewards_mask = {}'.format(i, p_ys_val, p_ls_val, log_inner_sum_val, log_inner_sum_masked_val, curriculum_mask_val, rewards_mask_val))
-            logging.info('step {}: lr = {:3.6f}'.format(i, lr_val))
-            logging.info(
-                    'step {}: rewards_avg = {:3.4f}\tloss = {:3.4f}\txent = {:3.4f}'.format(
-                            i, rewards_avg_val, loss_val, MLE_val))
-            logging.info('llratio = {:3.4f}\tbaselines = {}\trewards = {}\tbaselines_mse = {:3.4f}'.format(
-                    logllratio_val, baselines_val, rewards_val, baselines_mse_val))
+        # if i and i % 10 == 0:
+        if True:
+            logging.debug('set {}: loss = {}'.format(i, loss_val))
+            # logging.debug('set {}: probs = {}\tY_true_onehot = {}'.format(i, probs_val, Y_true_onehot_val))
+            # logging.debug('set {}: p_ys = {}\tp_ls_tmp = {}\tp_ls = {}\tlog_inner_sum = {}\tlog_inner_sum_masked = {}\tcurriculum_mask = {}\trewards_mask = {}'.format(i, p_ys_val, p_ls_tmp_val, p_ls_val, log_inner_sum_val, log_inner_sum_masked_val, curriculum_mask_val, rewards_mask_val))
+            # logging.debug('set {}: loc_mean_arr = {}\tsampled_loc_arr = {}'.format(i, loc_mean_arr_val, sampled_loc_arr_val))
+            # logging.info('step {}: lr = {:3.6f}'.format(i, lr_val))
+            # logging.info(
+            #         'step {}: rewards_avg = {:3.4f}\tloss = {:3.4f}\txent = {:3.4f}'.format(
+            #                 i, rewards_avg_val, loss_val, MLE_val))
+            # logging.info('llratio = {:3.4f}\tbaselines = {}\trewards = {}\tbaselines_mse = {:3.4f}'.format(
+            #         logllratio_val, baselines_val, rewards_val, baselines_mse_val))
             # logging.info('log_w = {}'.format(loc_w_val))
 
         # if i and i % training_steps_per_epoch == 0:
         if True:
             # Evaluation
-            y_mask = mask_labels(labels)
-            result = np.equal(Y_pred_val * y_mask, labels * y_mask)
+            # y_mask = mask_labels(labels)
+            result = np.equal(Y_pred_labels_val, labels)
+            print("step {}: test accuracy = {}".format(i, np.mean(np.min(result, axis=1))))
             logging.info("step {}: test accuracy = {}".format(i, np.mean(np.min(result, axis=1))))
-            logging.debug("step {}: Y = {}, Y_pred = {}".format(i, labels, Y_pred_val))
+            # logging.debug("step {}: Y = {}, Y_pred = {}".format(i, labels, Y_pred_val))
         #     for dataset in [mnist.validation, mnist.test]:
         #         steps_per_epoch = dataset.num_examples // config.eval_batch_size
         #         correct_cnt = 0

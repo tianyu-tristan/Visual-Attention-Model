@@ -16,7 +16,7 @@ Additionally:
 Both of the above dataset challenges focuses on digit recognition. In this exercise, MNIST is used to demonstrate the solution for single digit recognition, whereas SVHN is used to show the result of multiple digit sequence recognition.
 
 
-For more detail, please refer to [this blog]()
+For more detail, please refer to [this blog](https://medium.com/@tianyu.tristan/visual-attention-model-in-deep-learning-708813c2912c)
 
 
 [1] Multi-digit Number Recognition from Street View Imagery using Deep Convolutional Neural Networks. Ian J. Goodfellow, Yaroslav Bulatov, Julian Ibarz, Sacha Arnoud, and Vinay Shet (2013). https://arxiv.org/abs/1312.6082

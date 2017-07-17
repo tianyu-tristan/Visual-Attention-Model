@@ -4,11 +4,12 @@ from Globals import *
 from LocationNet import *
 from GlimpseNet import *
 from BaseNet import *
+import GlimpseSensor
 
 
 class CoreRNN(BaseNet):
 
-    def __init__(self, glimpseSensor):
+    def __init__(self):
         numClasses = constants['numClasses']
         imageSize = constants['imageSize']
         self.imgsPlaceholder = tf.placeholder(
@@ -21,22 +22,22 @@ class CoreRNN(BaseNet):
         self.learningRate = constants['learningRate']
         self.locationNetwork = LocationNet()
         self.glimpseNetwork = GlimpseNet()
-        self.glimpseSensor = glimpseSensor
-        self.adamOptimizer = tf.train.AdamOptimizer(
-            learning_rate=self.learningRate)
+        self.glimpseSensor = GlimpseSensor()
+        self.adamOptimizer = tf.train.GradientDescentOptimizer(
+            learning_rate=constants['learningRate'])
         with tf.variable_scope('corernn') as scope:
             self.wx = self.variableWithWeightDecay(
                 'weightsGlimpse', [256, 4 * self.hiddenDim], 1e-4, 0.0)
             self.wh = self.variableWithWeightDecay(
                 'weightsPrevh', [256, 4 * self.hiddenDim], 1e-4, 0.0)
-            self.b = self.variableOnCpu(
+            self.b = self.variableOnGpu(
                 'biasCoreRnn', [self.hiddenDim * 4], tf.constant_initializer(0.0))
 
         with tf.variable_scope('classifier') as scope:
             self.wc = self.variableWithWeightDecay(
                 'weightClassifier', [
                     self.hiddenDim, self.numClasses], 1e-4, 0.0)
-            self.bc = self.variableOnCpu(
+            self.bc = self.variableOnGpu(
                 'biasClassifier', [
                     self.numClasses], tf.constant_initializer(0.0))
 

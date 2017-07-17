@@ -17,21 +17,21 @@ class GlimpseNet(BaseNet):
         with tf.variable_scope('g0') as scope:
             self.wg0 = self.variableWithWeightDecay(
                 'weights', [self.glimpseDim, 128], 1e-4, 0.0)
-            self.bg0 = self.variableOnCpu(
+            self.bg0 = self.variableOnGpu(
                 'biases', [128], tf.constant_initializer(0.0))
 
         # linear layer processing location
         with tf.variable_scope('g1') as scope:
             self.wg1 = self.variableWithWeightDecay(
                 'weights', [2, 128], 1e-4, 0.0)
-            self.bg1 = self.variableOnCpu(
+            self.bg1 = self.variableOnGpu(
                 'biases', [128], tf.constant_initializer(0.0))
 
         # linear layer processing previouse two linear layers
         with tf.variable_scope('g2') as scope:
             self.wg2 = self.variableWithWeightDecay(
                 'weights', [256, 256], 1e-4, 0.0)
-            self.bg2 = self.variableOnCpu(
+            self.bg2 = self.variableOnGpu(
                 'biases', [256], tf.constant_initializer(0.0))
 
     def forward(self, glimpses, locations):

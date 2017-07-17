@@ -14,7 +14,7 @@ class LocationNet(BaseNet):
         with tf.variable_scope('locationnet') as scope:
             self.w = self.variableWithWeightDecay(
                 'weight', [hiddenDim, 2], 1e-4, 0.0)
-            self.b = self.variableOnCpu(
+            self.b = self.variableOnGpu(
                 'bias', [2], tf.constant_initializer(0.0))
 
     def clear(self):

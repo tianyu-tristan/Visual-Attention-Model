@@ -38,11 +38,11 @@ mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
 monitorPh, monitorOps = setupSummaries()
 saver = tf.train.Saver()
 summaryOps = tf.summary.merge_all()
-glimpseSensor = GlimpseSensor()
-coreRnn = CoreRNN(glimpseSensor)
+# glimpseSensor = GlimpseSensor()
+coreRnn = CoreRNN()
 
 with tf.Session() as sess:
-    sess.run(tf.initialize_all_variables())
+    sess.run(tf.global_variables_initializer())
     writer = tf.summary.FileWriter(logPath, sess.graph)
     if not os.path.exists(modelPath):
         os.makedirs(modelPath)
@@ -65,7 +65,7 @@ with tf.Session() as sess:
                 coreRnn.labelsPlaceholder: batch[1]})
             # calculate test accuracy
             tbatch = mnist.test.next_batch(batchSize)
-            coreRnn.forward(tbatch[0], tbatch[1], sess)
+            coreRnn.forward(tbatch[0], tbatch[1])
             testAcc = sess.run(
                 coreRnn.accuracy,
                 feed_dict={

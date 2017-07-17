@@ -7,13 +7,13 @@ class BaseNet(object):
     def __init__(self):
         return
 
-    def variableOnCpu(self, name, shape, initializer):
+    def variableOnGpu(self, name, shape, initializer):
         with tf.device('/cpu:0'):
             var = tf.get_variable(name, shape, initializer=initializer)
         return var
 
     def variableWithWeightDecay(self, name, shape, stddev, wd):
-        var = self.variableOnCpu(
+        var = self.variableOnGpu(
             name, shape, tf.truncated_normal_initializer(
                 stddev=stddev))
         if wd:
